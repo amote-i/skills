@@ -99,7 +99,7 @@
 `python/sglang/srt/arg_groups/` 存放 argparse 动作和参数校验 hook，**不是** dataclass 分组。所有参数仍定义在 `server_args.py` 的 `ServerArgs` 中。
 
 - **Argparse Action**（`argparse_actions.py`）：自定义 `argparse.Action` 子类，如 `LoRAPathAction`、`DeprecatedAction`、`DeprecatedStoreTrueAction`、`DeprecatedAliasStoreAction`
-- **参数校验 Hook**（`*_hook.py`）：在 CLI 解析后执行校验/转换逻辑，如 `speculative_hook.py`、`deepseek_v4_hook.py`、`hisparse_hook.py`、`nemotron_h_hook.py`
+- **参数校验 Hook**（`*_hook.py`）：在 CLI 解析后执行校验/转换逻辑，如 `speculative_hook.py` 等（以实际目录为准）
 - 文件名使用 `snake_case.py`，hook 文件以 `_hook.py` 后缀
 - Hook 函数命名遵循 `<verb>_<feature>` 模式，常见动词：`apply_`（设置默认值）、`validate_`（校验约束）、`handle_`（综合处理）。示例：`apply_deepseek_v4_defaults`、`validate_hisparse`、`handle_speculative_decoding`
 - Argparse Action 类名使用 `PascalCase` + `Action` 后缀（如 `LoRAPathAction`、`DeprecatedAction`）

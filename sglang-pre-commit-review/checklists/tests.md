@@ -33,52 +33,7 @@
 | `register_npu_ci` | 华为 Ascend NPU 测试（仅 NPU 特定代码路径） |
 | `register_xpu_ci` | Intel XPU 测试（仅 XPU 特定代码路径，不支持 `stage`/`runner_config`） |
 
-### 有效 Suite 速查
-
-> **suite 名称解析逻辑在 `python/sglang/test/ci/ci_register.py` 的 `effective_suite` 属性中。** 新风格由 `{stage}-test-{runner_config}` 拼接而成；旧风格直接使用 `suite` 字符串。**如拼接逻辑有变化，以 `ci_register.py` 源码为准。**
-
-#### CUDA Suite
-
-| Suite | Runner | 典型用途 |
-|-------|--------|----------|
-| `base-a-test-cpu` | `ubuntu-latest` | CPU-only 单元测试 |
-| `base-a-test-1-gpu-small` | `1-gpu-5090` | 快速预检（小模型） |
-| `base-b-test-1-gpu-small` | `1-gpu-5090` | 核心 1-GPU 测试（1B 模型） |
-| `base-b-test-1-gpu-large` | `1-gpu-h100` | 大内存/Hopper 内核（8B 模型） |
-| `base-b-test-2-gpu-large` | `2-gpu-h100` | 2-GPU TP/PP |
-| `base-b-test-4-gpu-b200` | `4-gpu-b200` | Blackwell/SM100 早期覆盖 |
-| `base-b-kernel-unit-1-gpu-large` | `1-gpu-h100` | JIT 内核正确性 |
-| `base-b-kernel-unit-1-gpu-b200` | `1-gpu-b200` | JIT 内核正确性（SM100） |
-| `base-b-kernel-unit-8-gpu-h200` | `8-gpu-h200` | 多 GPU JIT 内核正确性 |
-| `base-b-kernel-benchmark-1-gpu-large` | `1-gpu-h100` | JIT 内核基准测试 |
-| `base-c-test-4-gpu-h100` | `4-gpu-h100` | 大型 4-GPU 集成 |
-| `base-c-test-8-gpu-h200` | `8-gpu-h200` | 大型 8-GPU 集成 |
-| `base-c-test-deepep-4-gpu-h100` | `4-gpu-h100` | DeepEP 专家并行 |
-
-#### AMD Suite
-
-| Suite | 典型用途 |
-|-------|----------|
-| `stage-a-test-1-gpu-small-amd` | AMD 快速预检 |
-| `stage-b-test-1-gpu-small-amd` | AMD 核心 1-GPU 测试 |
-| `stage-b-test-1-gpu-large-amd` | AMD 大内存 1-GPU 测试 |
-| `stage-b-test-2-gpu-large-amd` | AMD 2-GPU ROCm |
-| `stage-c-test-4-gpu-amd` | AMD 4-GPU |
-| `stage-c-test-large-8-gpu-amd` | AMD 8-GPU MI325 |
-
-#### NPU Suite（Ascend）
-
-| Suite | 典型用途 |
-|-------|----------|
-| `per-commit-1-npu-a2` | 1-NPU 测试 |
-| `per-commit-2-npu-a2` | 2-NPU 测试 |
-| `per-commit-4-npu-a3` | 4-NPU 测试 |
-| `per-commit-16-npu-a3` | 16-NPU 测试 |
-| `multimodal-gen-test-1-npu-a3` | 1-NPU 多模态 |
-| `multimodal-gen-test-2-npu-a3` | 2-NPU 多模态 |
-| `multimodal-gen-test-8-npu-a3` | 8-NPU 多模态 |
-
-> **NPU suite 后缀为硬件型号**（`a2` = Ascend 910B，`a3` = Ascend 910C），不是 `small`/`large` 等通用级别。
+> **suite 名称解析逻辑见 `python/sglang/test/ci/ci_register.py` 的 `effective_suite` 属性。** 有效 suite 速查表见 `reference/ci-suites.md`。
 
 ## 2. 测试结构
 
@@ -162,7 +117,7 @@ def tearDownClass(cls):
 
 ## 7. E2E 测试（需要 Server）
 
-- [ ] 优先使用 `DefaultServerBase` 或专用 fixture，而非手动 `setUpClass`（当前代码库仅约 3% 的 server 测试使用 fixture，此为渐进方向，不阻塞提交。数据来源：2025-05 采样 `test/registered/`）
+- [ ] 优先使用 `DefaultServerBase` 或专用 fixture，而非手动 `setUpClass`（当前代码库 fixture 使用率较低，此为渐进方向，不阻塞提交）
 - [ ] Server 参数最小化：只传特性相关参数，不是完整生产配置
 - [ ] 测试真实 HTTP 行为（状态码、响应 schema），而非仅"不崩溃"
 - [ ] 超时和重试逻辑：测试失败时不会永远挂起
@@ -204,14 +159,4 @@ def tearDownClass(cls):
 - [ ] benchmark 脚本有合理的默认参数和 `--help` 文档
 - [ ] 结果输出格式标准化，可被 CI 或比较工具解析
 
-## 严重等级映射指南
-
-| 分类 | 严重 | 重要 | 次要 |
-|------|------|------|------|
-| CI 注册 | 缺少 `register_*_ci` 调用、无效 suite 名称 | `est_time` 严重偏差、不必要的 `register_amd_ci` | `est_time` 略有偏差 |
-| 结构 | GPU/Server 测试继承 `unittest.TestCase`、目录放错 | 缺少 `__main__` 守卫 | 文件在 `manual/` 但未注明 |
-| Server 生命周期 | 缺少 `tearDownClass`（进程泄漏）、无 `hasattr` 守卫 | 超时值不合适 | 多余的清理步骤 |
-| 模型选择 | 单元测试用 70B 模型 | 1B 够用却用了 8B | 次优但可接受 |
-| 测试质量 | 测试始终通过、无断言 | 缺少边界情况测试、断言过弱 | 测试中的魔数 |
-| 覆盖率 | 新公共 API 零测试 | 新功能仅有正常路径测试 | 缺少罕见边界情况 |
-| Gateway 测试 | 路由逻辑零测试、auth 绕过无断言 | 缺少故障转移测试 | mock 粒度过细 |
+> **严重等级定义及映射见 SKILL.md 的"严重等级定义"节和"跨维度严重等级映射"节。**

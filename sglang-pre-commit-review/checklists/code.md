@@ -1,6 +1,6 @@
 # 代码检视检查清单
 
-适用于 `python/sglang/`、`sgl-model-gateway/` 及相关源码目录下的所有变更。
+适用于 `python/`（含 `python/sglang/` 全部子目录）及 `sgl-model-gateway/` 下的所有源码变更。
 
 > **作用域限制：** 本清单仅覆盖 `python/` 和 `sgl-model-gateway/` 目录。`sgl-kernel/`、`rust/`、`proto/` 等不在检视范围内。
 > **最后验证：** 2026-05（与 `python/sglang/srt/utils/`、`python/sglang/srt/arg_groups/` 等目录结构同步校验）
@@ -130,30 +130,14 @@
 
 - [ ] 向后兼容：现有 API 签名未被破坏（keyword-only 参数、默认值）
 - [ ] OpenAI API 兼容：受影响端点的响应格式符合规范
-- [ ] 多后端：CUDA 特定代码有适当守卫以兼容 ROCm/NPU（如 `if is_cuda(): ... else: ...` 或 `device_specific_func = cuda_fn if is_cuda() else npu_fn`）
-- [ ] NPU 路径守卫：新增 CUDA 代码路径需用 `is_npu()`（定义在 `python/sglang/srt/utils/common.py`）正确分流，避免 NPU 运行时误入 CUDA 专用路径导致崩溃
+- [ ] 多后端兼容：CUDA 特定代码有适当守卫以兼容 ROCm/NPU（如 `if is_cuda(): ... else: ...`）。对 NPU 适配尤为重要：新增 CUDA 代码路径需用 `is_npu()`（定义在 `python/sglang/srt/utils/common.py`）正确分流，避免 NPU 运行时误入 CUDA 专用路径导致崩溃
 - [ ] Protocol Buffers：消息变更向后兼容（新增 optional 字段，而非重命名/删除）。**注意：** `proto/` 不在检视范围内，此条仅适用于 `python/` 中直接引用 protobuf 的代码
 - [ ] Python 版本：未使用超出最低支持版本的语言特性
 - [ ] 导入路径：无因移动/重命名模块导致的外部导入破坏
 
 ## 9. 代码结构
 
-- [ ] DRY：无应提取为共享工具的重复逻辑
-- [ ] 关注点分离：业务逻辑未与 I/O 或展示层混合
-- [ ] 魔数/魔字符串：提取为命名常量
-- [ ] 函数长度：函数做一件事，不是冗长的巨石函数（当前代码库中存在大量长函数，此为渐进改进方向，不阻塞提交）
 - [ ] 死代码：无注释掉的代码、不可达分支或未使用的参数
 - [ ] 导入卫生：无循环导入，重量级可选依赖使用延迟导入
 
-## 严重等级映射指南
-
-| 分类 | 严重 | 重要 | 次要 |
-|------|------|------|------|
-| 正确性 | 结果错误、崩溃、数据丢失 | 边界情况未处理、静默失败 | 不可达分支 |
-| SGLang 专项 | 模型未注册、TP/PP 破坏、缺少 server arg help text | dtype 转换错误 | 命名不一致 |
-| Model Gateway | 路由到错误 worker、熔断器状态错误、auth 绕过 | 不必要的 `clone()`、缺少超时配置 | 命名不符合 Rust 惯例 |
-| 性能 | 热循环中的同步导致 10x+ 退化 | 热路径中不必要的内存分配 | 冷路径中的小量分配 |
-| 安全 | 密钥泄露、远程代码执行 | 缺少输入校验 | 生产环境中的 debug 日志 |
-| 调试残留 | 遗留 `breakpoint()`/`pdb` 在生产路径 | 调试 `print()` 在非测试代码中 | `TODO` 无 issue 编号 |
-| 兼容性 | 破坏公共 API、破坏 protobuf | 后端特定代码未加守卫 | 风格细节 |
-| 结构 | 循环导入导致崩溃 | DRY 违反伴随复制粘贴 bug | 魔数、函数过长、关注点分离 |
+> **严重等级定义及映射见 SKILL.md 的"严重等级定义"节和"跨维度严重等级映射"节。**

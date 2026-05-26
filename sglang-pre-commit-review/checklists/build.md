@@ -1,8 +1,8 @@
 # 构建系统检视检查清单
 
-适用于 `docker/`、`python/pyproject.toml`、`python/setup.py`、`python/setup.cfg`、`sgl-model-gateway/Cargo.toml` 及所有构建配置变更。
+适用于 `docker/`、`python/pyproject.toml`、`sgl-model-gateway/Cargo.toml` 及所有构建配置变更。
 
-> **作用域限制：** 本清单仅覆盖 `docker/`、`python/pyproject.toml`、`python/setup.py`、`python/setup.cfg`、`sgl-model-gateway/Cargo.toml`。其他构建文件（如 `sgl-kernel/` 的 CMakeLists、`rust/` 的 Cargo 配置）不在检视范围内。
+> **作用域限制：** 本清单仅覆盖 `docker/`、`python/pyproject.toml`、`sgl-model-gateway/Cargo.toml`。其他构建文件（如 `sgl-kernel/` 的 CMakeLists、`rust/` 的 Cargo 配置）不在检视范围内。
 > **最后验证：** 2026-05
 
 ---
@@ -49,11 +49,11 @@
 - [ ] `requires-python` 与实际最低版本一致
 - [ ] entry_points / scripts 配置正确
 
-### 打包配置（`python/setup.py`、`python/setup.cfg`）
-- [ ] `entry_points` / `console_scripts` 指向的入口函数实际存在且可正确导入
-- [ ] `install_requires` 与 `pyproject.toml` 的 `dependencies` 不冲突、不遗漏
-- [ ] 不打包无关文件（通过 `MANIFEST.in` 或 `package_data` 精确控制）
-- [ ] 版本号与 `pyproject.toml` 一致（如 `setup.py` 中硬编码版本号）
+### 打包配置
+
+- [ ] `entry_points` 的 `console_scripts` 指向的入口函数实际存在且可正确导入
+- [ ] `project.dependencies` 与 `project.optional-dependencies` 分组正确、无冲突
+- [ ] 不打包无关文件（通过 `tool.setuptools.packages` 或 `MANIFEST.in` 精确控制）
 
 ## 3. Rust 依赖（`sgl-model-gateway/Cargo.toml`）
 
@@ -85,13 +85,4 @@
 - [ ] 无硬编码的平台特定路径（`/usr/local/cuda` 应参数化）
 - [ ] NPU 适配相关构建参数（CANN 版本、Ascend 工具链路径）正确配置
 
-## 严重等级映射指南
-
-| 分类 | 严重 | 重要 | 次要 |
-|------|------|------|------|
-| Dockerfile | 基础镜像用 `latest`、密钥硬编码、构建必然失败 | 构建缓存未利用、端口不一致 | 不必要的包安装 |
-| Python 依赖 | 依赖冲突导致安装失败、移除仍被使用的包 | 重复依赖、版本无下界 | 次要版本上界过严 |
-| 打包配置 | `setup.py` 入口点指向不存在的函数、与 `pyproject.toml` 版本冲突 | 打包了无关文件、`MANIFEST.in` 遗漏必要文件 | — |
-| Rust 依赖 | 引入有漏洞的 crate、移除仍被使用的 crate | 不必要的 `full` feature、版本不一致 | Feature 命名不清晰 |
-| 通用构建 | 构建不可复现、跨平台必败 | 隐式本地路径 | 次优但可复现 |
-| NPU 适配 | CANN 版本不匹配导致运行时崩溃、Ascend 工具链路径错误且无降级 | CANN 版本未固定、NPU 特定构建参数硬编码 | CANN 版本注释不清晰 |
+> **严重等级定义及映射见 SKILL.md 的"严重等级定义"节和"跨维度严重等级映射"节。**
