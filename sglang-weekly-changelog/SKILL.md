@@ -45,7 +45,7 @@ git diff <last_commit>..<current_head> -- python/sglang/srt/server_args.py
 | 字段 | 来源 | 说明 |
 |---|---|---|
 | 参数名称 | 第一个位置参数或 `name=`/`dest=` 中的 `--xx-yy` | 保留 `--xx-yy` 格式；如有多个名称则全部列出 |
-| 类型 | `type=` 关键字 | `str`、`int`、`float`、`bool`；`action="store_true"` 表示 `Type: bool（set to enable）` |
+| 类型 | `type=` 关键字 | `str`、`int`、`float`、`bool`；`action="store_true"` 表示 `bool flag (set to enable)` |
 | 默认值 | `default=` 关键字 | 可能引用 `ServerArgs.xxx`，需从类体中解析实际值 |
 | 可选值 | `choices=` 关键字 | 可能引用变量，需解析变量值 |
 | 描述 | `help=` 关键字 | 多行字符串需合并为一整句 |
@@ -138,7 +138,7 @@ git diff <last_commit>..<current_head> -- <file_path>
 | 前一个参数/新参数分组 | 参数名称 | 默认值 | 可选值 | 描述 |
 |---|---|---|---|---|
 | Http Server（新分组） | --host | 127.0.0.1 | Type: str | HTTP 服务监听地址 |
-| --grpc-mode | --skip-server-warmup | False | Type: bool（set to enable） | 跳过服务预热 |
+| --grpc-mode | --skip-server-warmup | False | bool flag (set to enable) | 跳过服务预热 |
 
 ```markdown
 ## 新增模型
@@ -188,7 +188,7 @@ git diff <last_commit>..<current_head> -- <file_path>
 
 1. 在 `python/sglang/srt/server_args.py` 中搜索该参数名称（`--xx-yy`），确认 `add_argument` 调用确实存在于当前 HEAD 中。
 2. 核对默认值列：读取对应的 `default=` 值，与表格中填写的是否一致。如果默认值引用了 `ServerArgs.xxx` 或外部变量，确认解析结果正确。
-3. 核对类型列：确认 `type=` 或 `action=` 与表格记录一致（如 `action="store_true"` 应记录为 `Type: bool（set to enable）`）。
+3. 核对类型列：确认 `type=` 或 `action=` 与表格记录一致（如 `action="store_true"` 应记录为 `bool flag (set to enable)`）。
 4. 核对可选值列：如果 `choices=` 存在，确认解析后的实际值列表正确。
 5. 核对描述列：确认 `help=` 文本与表格记录一致（必须完整匹配，不应出现截断或编造内容；注意已转义的 `\<` `\>` 对应源文件中的 `<` `>`）。
 6. 核对首列定位：确认"前一个参数/新参数分组"与实际代码中的位置关系正确。
