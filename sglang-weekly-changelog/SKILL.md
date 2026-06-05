@@ -59,6 +59,8 @@ git diff <last_commit>..<current_head> -- python/sglang/srt/server_args.py
 
 **可选值解析细节：** 当 `choices=[m.name.lower() for m in RealKvHashMode]` 时，需解析该枚举/类，列出实际的 choice 值。
 
+**可选值格式化规则：** 可选值以逗号分隔的纯文本列出，不使用方括号 `[]` 包裹（即 `a, b, c` 而非 `[a, b, c]`）。类型为字符串的可选值不使用引号包裹（即 `none, log, raise` 而非 `"none", "log", "raise"`）。
+
 ### 4. 提取新增支持的模型
 
 **目标文件（仅检查有新增内容的文件）：**
@@ -148,6 +150,17 @@ git diff <last_commit>..<current_head> -- <file_path>
 
 > 模型类型共分为 Large Language Model，Multimodal Language Model，Embedding Model，Reward Model，Rerank Model，Diffusion Language Model 这 6 种类型。
 
+**Markdown 特殊字符转义：**
+
+表格单元格内的文本可能包含 Markdown/HTML 特殊字符，需要在写入文件前进行转义，否则渲染时会丢失内容：
+
+| 特殊字符 | 转义方式 | 说明 |
+|---|---|---|
+| `<` 和 `>` | 用反斜杠转义为 `\<` 和 `\>`，或用反引号包裹为 `` `<...>` `` | 未转义的 `<...>` 会被当作 HTML 标签吞掉 |
+| `\|` | 用反斜杠转义为 `\\|` | 未转义的 `\|` 会被当作表格列分隔符 |
+
+转义范围覆盖所有表格列（描述、默认值、可选值、模型名称等）。转义后再写入文件。
+
 如果没有新增参数或没有新增模型，则省略对应章节（不输出空表格）。**如果两者都没有**（本周无任何新增），则不生成 history 文件，不更新 CHANGELOG.md，向用户报告"本周无新增参数和模型"后结束流程。
 
 ### 6. 验证生成的 history 文件
@@ -163,6 +176,7 @@ git diff <last_commit>..<current_head> -- <file_path>
 - [ ] 如果本次有新增模型，`## 新增模型` 表格至少有一行数据。
 - [ ] 如果既无新增参数也无新增模型，确认未生成 history 文件且未更新 CHANGELOG.md。
 - [ ] 表格 Markdown 语法正确（分隔行 `|---|---|---|` 与列数匹配）。
+- [ ] 表格内容中无未转义的 `<...>` 或裸 `|`（会在渲染时丢失内容）。
 
 ### 7. 内容二次确认
 
@@ -176,7 +190,7 @@ git diff <last_commit>..<current_head> -- <file_path>
 2. 核对默认值列：读取对应的 `default=` 值，与表格中填写的是否一致。如果默认值引用了 `ServerArgs.xxx` 或外部变量，确认解析结果正确。
 3. 核对类型列：确认 `type=` 或 `action=` 与表格记录一致（如 `action="store_true"` 应记录为 `Type: bool（set to enable）`）。
 4. 核对可选值列：如果 `choices=` 存在，确认解析后的实际值列表正确。
-5. 核对描述列：确认 `help=` 文本与表格记录一致（允许合理截断，但不应出现编造内容）。
+5. 核对描述列：确认 `help=` 文本与表格记录一致（必须完整匹配，不应出现截断或编造内容；注意已转义的 `\<` `\>` 对应源文件中的 `<` `>`）。
 6. 核对首列定位：确认"前一个参数/新参数分组"与实际代码中的位置关系正确。
 
 **新增模型确认：**
