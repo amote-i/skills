@@ -61,6 +61,16 @@ git diff <last_commit>..<current_head> -- python/sglang/srt/server_args.py
 
 **可选值格式化规则：** 可选值以逗号分隔的纯文本列出，不使用方括号 `[]` 包裹（即 `a, b, c` 而非 `[a, b, c]`）。类型为字符串的可选值不使用引号包裹（即 `none, log, raise` 而非 `"none", "log", "raise"`）。
 
+**判断参数是否为"新增"的规则：**
+
+提取新增参数时，需要区分以下三种情况：
+
+1. **纯新增参数**：diff 中出现新的 `parser.add_argument(...)` `+` 行，且旧 commit 中不存在同名参数。这些参数必须收录。
+2. **旧参数变为 deprecated**：旧 commit 中已存在该参数（如 `action="store_true"`），diff 中仅修改了其 `action` 为 `DeprecatedStoreTrueAction` / `DeprecatedAliasStoreAction` / `DeprecatedStoreConstAction`，或增加了 `new_flag=` 字段。**这些不算新增参数，不应收录。**
+3. **新增的 deprecated alias**：旧 commit 中不存在该参数名，但 diff 中该参数一出现就已带有 deprecated action（如 `action=DeprecatedAliasStoreAction`）。**这些参数虽然标记为 deprecated，但作为 CLI flag 是新增的，应收录。** 在描述列中标注 `[Deprecated alias for --xx-yy]`，帮助读者理解该参数的作用和替代方案。默认值列填写格式为 `实际默认值（废弃）`，其中实际默认值来自该 alias 指向的新参数的 `default=`（解析方式同普通参数）；若无自身 `default=` 也无 `dest=` 对应的 dataclass 字段默认值，则标注 `同 --new-flag（废弃）`。
+
+判断方法：对每个 diff 中新增的 `parser.add_argument` 块，先用 `git show <last_commit>:python/sglang/srt/server_args.py | grep '<参数名>'` 确认旧 commit 中是否存在该参数名，再决定属于上述哪种情况。
+
 ### 4. 提取新增支持的模型
 
 **目标文件（仅检查有新增内容的文件）：**
@@ -242,6 +252,7 @@ git push
 | diff 前忘记 `git pull` sglang 主线 | 先在 sglang 仓库执行 `git pull` |
 | CHANGELOG 中使用短 commit id | 始终使用 `git rev-parse HEAD` 输出的完整 40 位 SHA |
 | 将修改的参数当作新增参数 | 仅提取新增 `parser.add_argument` 的 `+` 行，不包括默认值或 help 文本的修改 |
+| 漏掉新增的 deprecated alias 参数 | 旧 commit 中不存在的参数名，即使出现时就带 `DeprecatedAliasStoreAction` 等 action，也应收录（标注 `[Deprecated alias for --xx-yy]`）。区分方法：用 `git show <last_commit>:<file> | grep '<参数名>'` 确认旧 commit 是否已有该参数 |
 | 未解析默认值/可选值中的变量引用 | 始终解析 `ServerArgs.xxx` 和其他变量引用到实际值 |
 | 将模型修改当作新增模型 | 仅报告纯新增的表行，不包括修改的行 |
 | 修改 CHANGELOG 已有行 | 只能追加，不允许删改 |
