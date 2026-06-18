@@ -53,8 +53,8 @@ git diff <last_commit>..<current_head> -- python/sglang/srt/server_args.py
 
 **默认值解析细节：**
 
-- 当 `default=ServerArgs.xxx` 时，需在 `ServerArgs` 类体（文件顶部）中查找该属性的初始值。注意 `ServerArgs` 是 dataclass，值可能在 `__post_init__` 方法中被动态覆盖（如 `_handle_missing_default_values()` 补全 tokenizer 相关字段）。**若值在 `__post_init__` 中动态计算，输出时标注 `（set in __post_init__，初始值: xxx）`。**
-- 当属性使用 `dataclasses.field(default_factory=...)` 时，默认值在运行时动态计算，无法静态解析。**输出时标注 `（computed at runtime: <factory 表达式>）`，并给出 factory 表达式内容作为参考。**
+- 当 `default=ServerArgs.xxx` 时，需在 `ServerArgs` 类体（文件顶部）中查找该属性的初始值。注意 `ServerArgs` 是 dataclass，值可能在 `__post_init__` 方法中被动态覆盖（如 `_handle_missing_default_values()` 补全 tokenizer 相关字段）。**若值在 `__post_init__` 中动态计算，输出时标注 `(set in __post_init__, initial value: xxx)`。**
+- 当属性使用 `dataclasses.field(default_factory=...)` 时，默认值在运行时动态计算，无法静态解析。**输出时标注 `(computed at runtime: <factory expression>)`，并给出 factory 表达式内容作为参考。**
 - 如果默认值引用了其他变量（如 `SAMPLING_BACKEND_CHOICES`），需解析该变量的实际值。
 
 **可选值解析细节：** 当 `choices=[m.name.lower() for m in RealKvHashMode]` 时，需解析该枚举/类，列出实际的 choice 值。
@@ -67,7 +67,7 @@ git diff <last_commit>..<current_head> -- python/sglang/srt/server_args.py
 
 1. **纯新增参数**：diff 中出现新的 `parser.add_argument(...)` `+` 行，且旧 commit 中不存在同名参数。这些参数必须收录。
 2. **旧参数变为 deprecated**：旧 commit 中已存在该参数（如 `action="store_true"`），diff 中仅修改了其 `action` 为 `DeprecatedStoreTrueAction` / `DeprecatedAliasStoreAction` / `DeprecatedStoreConstAction`，或增加了 `new_flag=` 字段。**这些不算新增参数，不应收录。**
-3. **新增的 deprecated alias**：旧 commit 中不存在该参数名，但 diff 中该参数一出现就已带有 deprecated action（如 `action=DeprecatedAliasStoreAction`）。**这些参数虽然标记为 deprecated，但作为 CLI flag 是新增的，应收录。** 在描述列中标注 `[Deprecated alias for --xx-yy]`，帮助读者理解该参数的作用和替代方案。默认值列填写格式为 `实际默认值（废弃）`，其中实际默认值来自该 alias 指向的新参数的 `default=`（解析方式同普通参数）；若无自身 `default=` 也无 `dest=` 对应的 dataclass 字段默认值，则标注 `同 --new-flag（废弃）`。
+3. **新增的 deprecated alias**：旧 commit 中不存在该参数名，但 diff 中该参数一出现就已带有 deprecated action（如 `action=DeprecatedAliasStoreAction`）。**这些参数虽然标记为 deprecated，但作为 CLI flag 是新增的，应收录。** 在描述列中标注 `[Deprecated alias for --xx-yy]`，帮助读者理解该参数的作用和替代方案。默认值列填写格式为 `实际默认值（deprecated）`，其中实际默认值来自该 alias 指向的新参数的 `default=`（解析方式同普通参数）；若无自身 `default=` 也无 `dest=` 对应的 dataclass 字段默认值，则标注 `同 --new-flag（deprecated）`。
 
 判断方法：对每个 diff 中新增的 `parser.add_argument` 块，先用 `git show <last_commit>:python/sglang/srt/server_args.py | grep '<参数名>'` 确认旧 commit 中是否存在该参数名，再决定属于上述哪种情况。
 
@@ -132,30 +132,30 @@ git diff <last_commit>..<current_head> -- <file_path>
 ## 新增参数
 
 | 前一个参数/新参数分组 | 参数名称 | 默认值 | 可选值 | 描述 |
-|---|---|---|---|---|
-| <分组或--prev> | --xx-yy | <默认值> | <可选值或 Type: xx> | <描述> |
+|---|---|---|---|---|---|
+| <group or --prev> | --xx-yy | <default> | <choices or Type: xx> | <description> |
 ```
 
 **首列填写规则与示例：**
 
 表格第一列用于定位新增参数的位置，有两种填法：
 
-- **新分组：** 当新增参数上方有 `# Xxx options` 样式的注释行时，说明这是一个新的参数分组。在首列填入分组名称（如 `Http Server（新分组）`），参数名称为该分组下的第一个参数。
+- **新分组：** 当新增参数上方有 `# Xxx options` 样式的注释行时，说明这是一个新的参数分组。在首列填入分组名称（如 `Http Server (new group)`），参数名称为该分组下的第一个参数。
 - **前一个参数：** 当无注释行时，填入 diff 中该参数前一个已有参数的 `--xx-yy` 名称，表示新增参数紧跟在该已有参数之后。
 
 示例对照：
 
 | 前一个参数/新参数分组 | 参数名称 | 默认值 | 可选值 | 描述 |
-|---|---|---|---|---|
-| Http Server（新分组） | --host | 127.0.0.1 | Type: str | HTTP 服务监听地址 |
-| --grpc-mode | --skip-server-warmup | False | bool flag (set to enable) | 跳过服务预热 |
+|---|---|---|---|---|---|
+| Http Server (new group) | --host | 127.0.0.1 | Type: str | HTTP server listen address |
+| --grpc-mode | --skip-server-warmup | False | bool flag (set to enable) | Skip server warmup |
 
 ```markdown
 ## 新增模型
 
 | 模型类型 | 模型族 | 模型名称 |
 |---|---|---|
-| <模型类型> | <模型族> | <HF标识符> |
+| <model type> | <model family> | <HF identifier> |
 ```
 
 > 模型类型共分为 Large Language Model，Multimodal Language Model，Embedding Model，Reward Model，Rerank Model，Diffusion Language Model 这 6 种类型。
@@ -171,6 +171,8 @@ git diff <last_commit>..<current_head> -- <file_path>
 
 转义范围覆盖所有表格列（描述、默认值、可选值、模型名称等）。转义后再写入文件。
 
+**表格内容语言规则：** 最终输出的表格中，表头可以为中文，但所有数据单元格（参数描述、默认值标注、分组名称等）必须使用英文，不得包含中文。例如：默认值列的标注应使用英文括号和英文术语（如 `(computed at runtime)` 而非 `（computed at runtime）`，`(set in __post_init__, initial value: xxx)` 而非 `（set in __post_init__，初始值: xxx）`）；分组名称应写作 `(new group)` 而非 `（新分组）`；废弃标注应写作 `(deprecated)` 而非 `（废弃）`。模型名称和 HuggingFace 标识符本身不受此限制（通常不含中文）。
+
 如果没有新增参数或没有新增模型，则省略对应章节（不输出空表格）。**如果两者都没有**（本周无任何新增），则不生成 history 文件，不更新 CHANGELOG.md，向用户报告"本周无新增参数和模型"后结束流程。
 
 ### 6. 验证生成的 history 文件
@@ -180,13 +182,14 @@ git diff <last_commit>..<current_head> -- <file_path>
 - [ ] 文件名日期格式正确：`YYYYMMDD.md`，日期为当天。
 - [ ] 表格不包含空行（无数据的占位行）。
 - [ ] 参数名称无重复（两个新增参数不应有相同的 `--xx-yy`）。
-- [ ] 默认值列不为空（至少填写 `Type: xx` 或 `（computed at runtime）`）。
+- [ ] 默认值列不为空（至少填写 `Type: xx` 或 `(computed at runtime)`）。
 - [ ] commit SHA 为完整 40 位。
-- [ ] 如果本次有新增参数，`## 新增参数` 表格至少有一行数据。
-- [ ] 如果本次有新增模型，`## 新增模型` 表格至少有一行数据。
+- [ ] 如果本次有新增参数，`## New Parameters` 表格至少有一行数据。
+- [ ] 如果本次有新增模型，`## New Models` 表格至少有一行数据。
 - [ ] 如果既无新增参数也无新增模型，确认未生成 history 文件且未更新 CHANGELOG.md。
 - [ ] 表格 Markdown 语法正确（分隔行 `|---|---|---|` 与列数匹配）。
 - [ ] 表格内容中无未转义的 `<...>` 或裸 `|`（会在渲染时丢失内容）。
+- [ ] 表格中数据单元格内容均为英文，不含中文（表头可为中文，但描述、默认值、标注等数据单元格不得出现中文）。
 
 ### 7. 内容二次确认
 
