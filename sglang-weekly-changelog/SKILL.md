@@ -34,42 +34,71 @@ diff 范围：`last_commit..current_head`。
 
 ### 3. 提取新增 server 参数
 
-**目标文件：** `python/sglang/srt/server_args.py`
+**目标文件：** `python/sglang/srt/server_args.py` 及 `python/sglang/srt/arg_groups/arg_utils.py`
 
 ```bash
 git diff <last_commit>..<current_head> -- python/sglang/srt/server_args.py
 ```
 
-**在 diff 中查找的内容（仅关注新增 `+` 行中的 `parser.add_argument`）：**
+**背景：** 当前 server_args.py 中，绝大多数参数通过 `ServerArgs` dataclass 的字段注解 `A[T, Arg(...)]` 定义（由 `add_cli_args_from_dataclass()` 自动生成 argparse），仅少数特殊参数（deprecated 重定向、动态 choices、`--config` 元参数）仍在 `add_cli_args()` 方法中手动调用 `parser.add_argument()`。因此提取新增参数需同时扫描两类位置。
+
+#### 3a. 主来源 — `ServerArgs` dataclass 字段（`A[T, Arg(...)]` 注解）
+
+在 diff `+` 行中查找新增的 dataclass 字段定义，格式为：
+
+```python
+field_name: A[T, "bare help string"] = <default_value>
+field_name: A[T, Arg(help="...", choices=..., aliases=[...], ...)] = <default_value>
+```
+
+**字段映射表（`A[T, Arg(...)]` 模式）：**
 
 | 字段 | 来源 | 说明 |
 |---|---|---|
-| 参数名称 | 第一个位置参数或 `name=`/`dest=` 中的 `--xx-yy` | 保留 `--xx-yy` 格式；如有多个名称则全部列出 |
-| 类型 | `type=` 关键字 | `str`、`int`、`float`、`bool`；`action="store_true"` 表示 `bool flag (set to enable)` |
-| 默认值 | `default=` 关键字 | 可能引用 `ServerArgs.xxx`，需从类体中解析实际值 |
-| 可选值 | `choices=` 关键字 | 可能引用变量，需解析变量值 |
-| 描述 | `help=` 关键字 | 多行字符串需合并为一整句 |
-| 分组/前一个参数 | `add_argument` 上方的注释行 `# Xxx options`，或前一个参数名称 | 有注释 → 新分组名称；无注释 → 前一个参数的 `--xx-yy` |
+| 参数名称 | `Arg(cli_name=...)` 或 `Arg(aliases=[...])`，否则由字段名自动推导（`field_name` → `--field-name`） | 保留 `--xx-yy` 格式；若有 aliases，主名 + 别名均列出 |
+| 类型 | 类型注解 `T` | `str`、`int`、`float`、`bool`（auto `store_true`）等；`Optional[X]` 表示可选；`Literal["a","b"]` 自动生成 choices |
+| 默认值 | 字段赋值 `= VALUE` | 紧跟字段定义行末尾的值；若为 `dataclasses.field(default_factory=...)` 见下方说明 |
+| 可选值 | `Arg(choices=...)` 或 `Literal["a","b"]` 自动推导 | 可能引用变量，需解析变量值 |
+| 描述 | `Arg(help=...)` 或裸字符串 | 多行字符串需合并为一整句 |
+| 分组/前一个参数 | 字段上方的注释 banner `# ---- Xxx ----`，或前一字段的参数名 | 出现 banner → 新分组；否则 → 前一个字段的 `--xx-yy` |
 
-**默认值解析细节：**
+#### 3b. 次来源 — `add_cli_args()` 方法中的 `parser.add_argument()` 手动条目
 
-- 当 `default=ServerArgs.xxx` 时，需在 `ServerArgs` 类体（文件顶部）中查找该属性的初始值。注意 `ServerArgs` 是 dataclass，值可能在 `__post_init__` 方法中被动态覆盖（如 `_handle_missing_default_values()` 补全 tokenizer 相关字段）。**若值在 `__post_init__` 中动态计算，输出时标注 `(set in __post_init__, initial value: xxx)`。**
-- 当属性使用 `dataclasses.field(default_factory=...)` 时，默认值在运行时动态计算，无法静态解析。**输出时标注 `(computed at runtime: <factory expression>)`，并给出 factory 表达式内容作为参考。**
-- 如果默认值引用了其他变量（如 `SAMPLING_BACKEND_CHOICES`），需解析该变量的实际值。
+在 `add_cli_args()` 静态方法（约第 6448 行起）中，diff `+` 行可能出现新的 `parser.add_argument(...)` 调用。此处的参数分两类：
 
-**可选值解析细节：** 当 `choices=[m.name.lower() for m in RealKvHashMode]` 时，需解析该枚举/类，列出实际的 choice 值。
+1. **新功能参数**（如 dynamic choices 参数或新 deprecated alias）：正常提取，映射表同旧版规则：
+   - 参数名称：第一个位置参数（`"--xx-yy"`）
+   - 类型：`type=` 关键字
+   - 默认值：`default=` 关键字
+   - 可选值：`choices=` 关键字
+   - 描述：`help=` 关键字
+
+2. **旧参数改造为 deprecated**：旧 commit 中已存在的参数，仅修改了 `action=` 为 deprecated action 或增加了 `new_flag=`。**不算新增，不收录。**
+
+#### 3c. 新旧参数的判定规则
+
+对每个候选新增参数，按以下规则判断是否应收录：
+
+1. **纯新增参数**：diff 中出现新的 dataclass 字段（`A[T, ...]`）或新的 `parser.add_argument(...)` `+` 行，且旧 commit 中不存在同名参数。**必须收录。**
+2. **旧参数变为 deprecated**：旧 commit 中已存在该参数，diff 中仅修改了其 action 或增加了 `new_flag=` 字段。**不算新增参数，不收录。**
+3. **新增的 deprecated alias**：旧 commit 中不存在该参数名，但 diff 中该参数一出现就已带有 deprecated action（如 `action=DeprecatedAliasStoreAction`，或 dataclass 字段中 `Arg(action=DeprecatedStoreTrueAction, ...)`）。**作为 CLI flag 是新增的，应收录。** 在描述列中标注 `[Deprecated alias for --xx-yy]`。默认值列填写该 alias 指向新参数的默认值（解析方式同普通参数）；若无明显指向的默认值，标注 `Same as --new-flag (deprecated)`。
+
+**判断方法：** 对每个候选参数名，先用 `git show <last_commit>:python/sglang/srt/server_args.py | Select-String '<参数名>'` 确认旧 commit 中是否存在该参数名，再决定属于上述哪种情况。
+
+#### 3d. 默认值解析细节
+
+- **dataclass 字段直接赋值：** 当字段定义为 `field_name: A[str, ...] = "auto"` 时，默认值为 `"auto"`；当定义为 `field_name: A[bool, ...] = False` 时，类型为 `bool flag (set to enable)`，默认值为 `False`。
+- **`dataclasses.field(default_factory=...)`：** 默认值在运行时动态计算，无法静态解析。**输出时标注 `(computed at runtime: <factory expression>)`，并给出 factory 表达式内容作为参考。**
+- **`__post_init__` 中动态修改：** 即使字段有静态默认值，`__post_init__` 方法可能在运行时覆盖它。**若确认值在 `__post_init__` 中动态计算，输出时标注 `(set in __post_init__, initial value: xxx)`。**
+- **默认值引用变量：** 如果默认值引用了其他变量（如 `default=ServerArgs.xxx` 或 `default=SOME_CONSTANT`），需解析该变量的实际值。
+
+#### 3e. 可选值解析细节
+
+- 当 `choices=LOAD_FORMAT_CHOICES` 时，需在文件顶部查找该变量的定义，列出实际的 choice 值。
+- 当 `choices=[m.name.lower() for m in RealKvHashMode]` 时，需解析该枚举/类，列出实际的 choice 值。
+- 当类型注解为 `Literal["a", "b", "c"]` 时，自动生成的 choices 为 `a, b, c`。
 
 **可选值格式化规则：** 可选值以逗号分隔的纯文本列出，不使用方括号 `[]` 包裹（即 `a, b, c` 而非 `[a, b, c]`）。类型为字符串的可选值不使用引号包裹（即 `none, log, raise` 而非 `"none", "log", "raise"`）。
-
-**判断参数是否为"新增"的规则：**
-
-提取新增参数时，需要区分以下三种情况：
-
-1. **纯新增参数**：diff 中出现新的 `parser.add_argument(...)` `+` 行，且旧 commit 中不存在同名参数。这些参数必须收录。
-2. **旧参数变为 deprecated**：旧 commit 中已存在该参数（如 `action="store_true"`），diff 中仅修改了其 `action` 为 `DeprecatedStoreTrueAction` / `DeprecatedAliasStoreAction` / `DeprecatedStoreConstAction`，或增加了 `new_flag=` 字段。**这些不算新增参数，不应收录。**
-3. **新增的 deprecated alias**：旧 commit 中不存在该参数名，但 diff 中该参数一出现就已带有 deprecated action（如 `action=DeprecatedAliasStoreAction`）。**这些参数虽然标记为 deprecated，但作为 CLI flag 是新增的，应收录。** 在描述列中标注 `[Deprecated alias for --xx-yy]`，帮助读者理解该参数的作用和替代方案。默认值列填写格式为 `实际默认值（deprecated）`，其中实际默认值来自该 alias 指向的新参数的 `default=`（解析方式同普通参数）；若无自身 `default=` 也无 `dest=` 对应的 dataclass 字段默认值，则标注 `同 --new-flag（deprecated）`。
-
-判断方法：对每个 diff 中新增的 `parser.add_argument` 块，先用 `git show <last_commit>:python/sglang/srt/server_args.py | grep '<参数名>'` 确认旧 commit 中是否存在该参数名，再决定属于上述哪种情况。
 
 ### 4. 提取新增支持的模型
 
@@ -140,8 +169,8 @@ git diff <last_commit>..<current_head> -- <file_path>
 
 表格第一列用于定位新增参数的位置，有两种填法：
 
-- **新分组：** 当新增参数上方有 `# Xxx options` 样式的注释行时，说明这是一个新的参数分组。在首列填入分组名称（如 `Http Server (new group)`），参数名称为该分组下的第一个参数。
-- **前一个参数：** 当无注释行时，填入 diff 中该参数前一个已有参数的 `--xx-yy` 名称，表示新增参数紧跟在该已有参数之后。
+- **新分组：** 当新增参数上方有 `# ---- Xxx ----` 样式的 banner 注释行时（如 `# ---- HTTP server ----`），说明这是一个新的参数分组。在首列填入分组名称（如 `HTTP server (new group)`），参数名称为该分组下的第一个参数。
+- **前一个参数：** 当无 banner 注释行时，填入 diff 中该参数前一个已有参数的 `--xx-yy` 名称，表示新增参数紧跟在该已有参数之后。
 
 示例对照：
 
@@ -166,8 +195,9 @@ git diff <last_commit>..<current_head> -- <file_path>
 
 | 特殊字符 | 转义方式 | 说明 |
 |---|---|---|
-| `<` 和 `>` | 用反斜杠转义为 `\<` 和 `\>`，或用反引号包裹为 `` `<...>` `` | 未转义的 `<...>` 会被当作 HTML 标签吞掉 |
+| `<` 和 `>` | 用反斜杠转义为 `\<` 和 `\>`，或用反引号包裹为 `` `<...>` `` | 未转义的 `<...>` 会被当作 HTML 标签吞掉。注意：仅对独立出现的 `<` `>` 转义；`>=` `<=` `->` 等复合运算符无需转义 |
 | `\|` | 用反斜杠转义为 `\\|` | 未转义的 `\|` 会被当作表格列分隔符 |
+| `__text__` | 用反引号包裹为 `` `__text__` `` | 双下划线 `__...__` 会被部分 Markdown 渲染器解析为粗体标记，导致内容丢失或格式错乱 |
 
 转义范围覆盖所有表格列（描述、默认值、可选值、模型名称等）。转义后再写入文件。
 
@@ -187,7 +217,7 @@ git diff <last_commit>..<current_head> -- <file_path>
 - [ ] 如果本次有新增参数，`## New Parameters` 表格至少有一行数据。
 - [ ] 如果本次有新增模型，`## New Models` 表格至少有一行数据。
 - [ ] 如果既无新增参数也无新增模型，确认未生成 history 文件且未更新 CHANGELOG.md。
-- [ ] 表格 Markdown 语法正确（分隔行 `|---|---|---|` 与列数匹配）。
+- [ ] 表格 Markdown 语法正确。参数表为 5 列，分隔行应为 `|---|---|---|---|---|`；模型表为 3 列，分隔行应为 `|---|---|---|`。列数必须与表头匹配。
 - [ ] 表格内容中无未转义的 `<...>` 或裸 `|`（会在渲染时丢失内容）。
 - [ ] 表格中数据单元格内容均为英文，不含中文（表头可为中文，但描述、默认值、标注等数据单元格不得出现中文）。
 
@@ -199,12 +229,27 @@ git diff <last_commit>..<current_head> -- <file_path>
 
 对 `## 新增参数` 表格中的每一行：
 
-1. 在 `python/sglang/srt/server_args.py` 中搜索该参数名称（`--xx-yy`），确认 `add_argument` 调用确实存在于当前 HEAD 中。
-2. 核对默认值列：读取对应的 `default=` 值，与表格中填写的是否一致。如果默认值引用了 `ServerArgs.xxx` 或外部变量，确认解析结果正确。
-3. 核对类型列：确认 `type=` 或 `action=` 与表格记录一致（如 `action="store_true"` 应记录为 `bool flag (set to enable)`）。
-4. 核对可选值列：如果 `choices=` 存在，确认解析后的实际值列表正确。
-5. 核对描述列：确认 `help=` 文本与表格记录一致（必须完整匹配，不应出现截断或编造内容；注意已转义的 `\<` `\>` 对应源文件中的 `<` `>`）。
-6. 核对首列定位：确认"前一个参数/新参数分组"与实际代码中的位置关系正确。
+1. 在 `python/sglang/srt/server_args.py` 中搜索该参数名称（`--xx-yy`），确认其定义确实存在于当前 HEAD 中。
+   - 若参数来自 dataclass 字段（`A[T, Arg(...)]`），确认字段存在且类型/注解正确。
+   - 若参数来自 `add_cli_args()` 中的 `parser.add_argument()`，确认调用正确。
+2. 核对默认值列：
+   - dataclass 字段：读取 `= VALUE`，与表格一致。
+   - `parser.add_argument()`：读取 `default=` 值。
+   - 若引用 `ServerArgs.xxx` 或外部变量，确认解析结果正确。
+3. 核对类型列：
+   - dataclass 字段：类型注解 `T` 决定（`bool` → `bool flag (set to enable)`，`int` → `Type: int`，`str` → `Type: str` 等）。
+   - `parser.add_argument()`：确认 `type=` 或 `action=` 与表格记录一致（如 `action="store_true"` → `bool flag (set to enable)`）。
+4. 核对可选值列：
+   - dataclass 字段：检查 `Arg(choices=...)` 或 `Literal[...]` 自动推导的 choices。
+   - `parser.add_argument()`：检查 `choices=`。
+   - 确认解析后的实际值列表正确。
+5. 核对描述列：
+   - dataclass 字段：检查 `Arg(help=...)` 或裸字符串内容。
+   - `parser.add_argument()`：检查 `help=` 内容。
+   - 必须完整匹配，不应出现截断或编造内容；注意已转义的 `\<` `\>` 对应源文件中的 `<` `>`。
+6. 核对首列定位：
+   - dataclass 字段：确认 `# ---- Xxx ----` comment banner 或前一字段的参数名与实际代码位置一致。
+   - `parser.add_argument()`：确认前一个参数或分组名称正确。
 
 **新增模型确认：**
 
@@ -254,13 +299,16 @@ git push
 |---|---|
 | diff 前忘记 `git pull` sglang 主线 | 先在 sglang 仓库执行 `git pull` |
 | CHANGELOG 中使用短 commit id | 始终使用 `git rev-parse HEAD` 输出的完整 40 位 SHA |
-| 将修改的参数当作新增参数 | 仅提取新增 `parser.add_argument` 的 `+` 行，不包括默认值或 help 文本的修改 |
-| 漏掉新增的 deprecated alias 参数 | 旧 commit 中不存在的参数名，即使出现时就带 `DeprecatedAliasStoreAction` 等 action，也应收录（标注 `[Deprecated alias for --xx-yy]`）。区分方法：用 `git show <last_commit>:<file> | grep '<参数名>'` 确认旧 commit 是否已有该参数 |
+| 只扫描 `add_cli_args()` 中的 `parser.add_argument` 而忽略 dataclass 字段 | 绝大多数新增参数现在以 `A[T, Arg(...)]` 注解的 dataclass 字段形式定义，必须同时扫描这类字段中的新增行 |
+| 只扫描 dataclass 字段而忽略 `add_cli_args()` 中的手动条目 | 少数参数（dynamic choices、deprecated alias、--config）仍在 `add_cli_args()` 中手动定义，也需扫描 |
+| 将修改的参数当作新增参数 | 仅提取 diff 中纯新增的 dataclass 字段或 `parser.add_argument` 调用（`+` 行），不包括对已有参数默认值/help 文本的修改 |
+| 将 `no_cli=True` 的字段当作 CLI 参数收录 | `Arg(no_cli=True)` 表示该字段无 CLI surface（仅 Python 内部使用），不应加入参数表格 |
+| 漏掉新增的 deprecated alias 参数 | 旧 commit 中不存在的参数名，即使出现时就带 `DeprecatedAliasStoreAction` 等 action，或 dataclass 字段中 `Arg(action=DeprecatedStoreTrueAction, ...)`，也应收录（标注 `[Deprecated alias for --xx-yy]`）。区分方法：用 `git show <last_commit>:<file> \| Select-String '<参数名>'` 确认旧 commit 是否已有该参数 |
 | 未解析默认值/可选值中的变量引用 | 始终解析 `ServerArgs.xxx` 和其他变量引用到实际值 |
 | 将模型修改当作新增模型 | 仅报告纯新增的表行，不包括修改的行 |
 | 修改 CHANGELOG 已有行 | 只能追加，不允许删改 |
 | 忽略 `reward_models.mdx` 的新增模型 | 5 个文件用 HTML `<tbody>` 表格，`reward_models.mdx` 用 Markdown 表格，需分别处理 |
-| 未处理 `default_factory` 和 `__post_init__` | 遇到动态默认值时标注 `（computed at runtime）` 或 `（set in __post_init__）`，不可强行猜测 |
+| 未处理 `default_factory` 和 `__post_init__` | 遇到动态默认值时标注 `(computed at runtime)` 或 `(set in __post_init__)`，不可强行猜测 |
 | 未验证输出就提交 | 始终先执行步骤 6 的格式 checklist 和步骤 7 的内容二次确认 |
 | 跳过内容二次确认直接提交 | 必须执行步骤 7 回溯源文件核对每条数据，发现差异时暂停并提示用户 |
 | `history/` 目录不存在导致 git add 失败 | 生成文件前先确保 `history/` 目录存在 |
