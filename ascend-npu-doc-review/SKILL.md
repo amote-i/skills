@@ -150,7 +150,9 @@ WebFetch: https://api.github.com/repos/sgl-project/sglang/pulls/<N>/files
 
 ### 阶段三：输出审查意见
 
-**必须全英文输出**，可直接粘贴到 GitHub PR comment 中。
+**语言要求**：
+- **审查意见（comment block）**：必须全英文，可直接粘贴到 GitHub PR comment 中
+- **整体判定、总结说明、过程汇报**：使用中文，以符合读者阅读习惯
 
 **输出结构**：按文件分组，每文件输出：
 
