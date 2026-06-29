@@ -9,7 +9,25 @@
 
 > 两类规则均为"必须修复才可合入"。区别仅在输出报告的严重级别标记：M-C-x → 🔴 BLOCK，M-F-x → 🟡 ISSUE（与 SKILL.md 的严重级别映射保持一致）。
 
-**规则总数**：正确性 1 条，重要格式 8 条。
+**规则总数**：正确性 1 条，重要格式 12 条。
+
+## 规则速查表
+
+| 编号  | 规则名称                      | 严重级别 | 简要说明                                                                   |
+|-------|-------------------------------|----------|----------------------------------------------------------------------------|
+| M-C-1 | 含分号值的环境变量须加引号    | 🔴 BLOCK | `export` 值含 `;` 时必须用双引号包裹，否则 shell 会将分号解释为命令分隔符  |
+| M-F-1 | 脚本开头须有动态字段注释      | 🟡 ISSUE | 脚本代码块开头必须有 `#` 注释块列出需替换的变量/占位符                     |
+| M-F-2 | 动态字段占位符格式统一        | 🟡 ISSUE | 占位符格式须与 `best_practice/deepseek_r1.mdx` 中同类字段保持一致          |
+| M-F-3 | 脚本中不得硬编码 IP           | 🟡 ISSUE | 禁止硬编码非 `localhost` / `127.0.0.1` 的 IP，多节点场景必须使用占位符     |
+| M-F-4 | 脚本中不得有重复字段          | 🟡 ISSUE | 同一代码块内环境变量、命令行参数、Shell 变量不得重复定义或赋值             |
+| M-F-5 | 链接有效性校验                | 🟡 ISSUE | 站内链接须可解析指向目标，旧站 `docs.sglang.io` 链接应改写为 root-relative |
+| M-F-6 | 删除文档时同步 docs.json      | 🟡 ISSUE | 删除 `.mdx` 后须同步清理 `navigation` 和 `redirects` 中对应条目            |
+| M-F-7 | 新增文档时同步 docs.json      | 🟡 ISSUE | 新增 `.mdx` 后须在对应 group 的 `pages` 数组中添加条目                     |
+| M-F-8 | 脚本中不得硬编码自定义路径    | 🟡 ISSUE | 模型/数据/日志等自定义路径须用变量替代（系统路径除外）                     |
+| M-F-9 | 部署脚本中不得含调试环境变量  | 🟡 ISSUE | `best_practice/`、`model-tutorials/` 下脚本不得含 `SGLANG_NPU_PROFILING` 等调试变量 |
+| M-F-10 | 用例内信息一致性              | 🟡 ISSUE | 同一用例的标题、元数据、速查表行、bench 命令输入输出须一致                        |
+| M-F-11 | 新增文档须有完整前置元数据    | 🟡 ISSUE | 新增 `.mdx` 文件须以 YAML frontmatter 开头，含 `title` 和 `description`             |
+| M-F-12 | 成对标点符号须正确闭合        | 🟡 ISSUE | `**`、`` ` ``、`"`、`'`、`[]()`、`【】` 等成对符号不得漏闭合，否则导致渲染异常        |
 
 ---
 
@@ -255,3 +273,189 @@ export HCCL_SOCKET_IFNAME=eth1   # 重复定义，应只保留最终需要的值
 3. 确认剩余自定义路径是否已用变量替代
 
 **修复指引**：将硬编码的自定义路径替换为命名清晰的 Shell 变量，变量初始化值使用占位符路径如 `/path/to/model-weights`，并在脚本开头注释块中说明该变量。
+
+---
+
+## M-F-9：部署脚本中不得含调试环境变量
+
+**检查范围**：`best_practice/` 和 `model-tutorials/` 目录下 `.mdx` 文件中的脚本代码块。
+
+**规则**：以下调试/分析用途的环境变量不应出现在面向最终用户的部署脚本中，这些变量仅供开发调试使用，混入部署脚本会造成用户困惑且可能导致非预期的性能开销：
+
+| 环境变量 | 用途 |
+|----------|------|
+| `SGLANG_NPU_PROFILING` | NPU profiling 开关，开启后采集 profiling 数据 |
+| `SGLANG_NPU_PROFILING_STAGE` | NPU profiling 阶段选择（如 prefill / decode） |
+| `SGLANG_PROFILE_WITH_STACK` | 带 Python 调用栈的 profiling，开销较大 |
+
+**检查方式**：
+1. 判断当前变更文件是否属于 `best_practice/` 或 `model-tutorials/` 目录
+2. 在该文件的脚本代码块中搜索上述三个环境变量名（`export` 语句或行内赋值形式 `VAR=val`）
+3. 发现任一项即标记为违规
+
+**修复指引**：移除脚本中的调试环境变量。如果需要在文档中说明如何开启调试，应在正文中另起独立段落描述（如 `<Tip>` 或 `<Warning>` 块），而非混入部署脚本。
+
+---
+
+## M-F-10：用例内信息一致性
+
+**检查范围**：`best_practice/` 目录下 `.mdx` 文件中，`## Optimal Configuration` 之后的每个 `###` 级用例 section。
+
+**规则**：同一用例内，以下五组信息必须一致。任一不一致即报告 🟡 ISSUE。
+
+### 1. 标题 ↔ 元数据
+
+用例标题格式为 `### <Model> <Quant> <NodeDesc> <DatasetDesc> <TPOT>`，其各字段须与紧随其后的 `**field**` 元数据块完全一致：
+
+| 标题中的字段 | 对应的元数据字段 | 示例（标题 → 元数据） |
+|---|---|---|
+| `<Model>` | `**Model**` | `Qwen3-30B-A3B` → `Qwen3-30B-A3B` |
+| `<Quant>` | `**Quantization**` | `W8A8` → `W8A8 INT8`（元数据含更详细描述，但核心量化简称须匹配） |
+| `<NodeDesc>` | `**Cards**` + `**Deploy Mode**` | `1P` → Cards=`1`, Deploy Mode=`PD Mixed` |
+| `<DatasetDesc>` | `**Dataset**` | `IN3K5 OUT1K5` → `3.5K+1.5K`（格式不同但数值须对应） |
+| `<TPOT>` | `**TPOT**` | `37ms` → `37ms` |
+
+标题和元数据中 `<NodeDesc>` 与 `Deploy Mode` 的对应关系：
+- `NP` → PD Mixed（N 卡 PD 分离混合部署）
+- `NP` + `MD`（含 `D` 标记）→ PD Disaggregation（N 个 prefill 节点 + M 个 decode 节点）
+
+### 2. 标题 ↔ 速查表行
+
+速查表（`### Low Latency` 或 `### High Throughput` 下的 8 列表格）中必须存在一行，其 `Configuration` 列链接的锚点目标（如 `#qwen3-30b-a3b-w8a8-1p-in3k5-out1k5-37ms`）指向该用例标题，且该行的 `Model`、`Hardware`、`Cards`、`Deploy Mode`、`Dataset`、`TPOT`、`Quantization` 列值与元数据一致。
+
+### 3. 速查表 Configuration 链接 ↔ 标题锚点
+
+`Configuration` 列链接格式为 `[Optimal Configuration](#<slug>)`，其中 `<slug>` 必须能解析到文件中某个 `###` 标题。slug 生成规则：标题全小写，空格和 `.` 替换为 `-`，示例：
+
+| 标题 | slug |
+|---|---|
+| `Qwen3-30B-A3B W8A8 1P IN3K5 OUT1K5 37ms` | `qwen3-30b-a3b-w8a8-1p-in3k5-out1k5-37ms` |
+| `Qwen3-30B-A3B BF16 1P IN1K OUT100` | `qwen3-30b-a3b-bf16-1p-in1k-out100` |
+| `DeepSeek-R1 W8A8 8x1P IN6K OUT1K6 8.66ms` | `deepseek-r1-w8a8-8x1p-in6k-out1k6-8-66ms` |
+
+如果表中存在 Configuration 链接但文件内找不到对应标题，报告 ISSUE。
+
+### 4. 标题 Dataset 描述符 ↔ Benchmark 命令的 input/output-len
+
+标题中的 `<DatasetDesc>` 格式为 `IN<X>K OUT<Y>K`（如 `IN3K5 OUT1K5` = 输入 ~3500 tokens，输出 ~1500 tokens），须与 Benchmark 命令中的 `--random-input-len` 和 `--random-output-len` 数值对应。允许因 tokenizer 对齐有小幅偏差（≤10% 容差，且不得跨数量级），但格式意义上的值（如 `3.5K` = 3500）必须在同一数量级：
+
+| Dataset 描述符 | 预期 --random-input-len | 预期 --random-output-len |
+|---|---|---|
+| `IN3K5 OUT1K5` | ~3500 | ~1500 |
+| `IN128K OUT1K` | ~131072 | ~1024 |
+| `IN1K OUT100` | ~1000 | ~100 |
+
+### 5. 元数据 Dataset ↔ Benchmark 命令
+
+元数据 `**Dataset**` 字段（如 `3.5K+1.5K`）的数值应与 `--random-input-len` / `--random-output-len` 对应，校验方式同检查 4。
+
+### 检查方式
+
+对每个用例 section 依次执行：
+1. 解析标题，提取 `<Model>`、`<Quant>`、`<NodeDesc>`、`<DatasetDesc>`、`<TPOT>`
+2. 解析元数据块，逐字段对比标题中的信息
+3. 在 Low Latency / High Throughput 两个表格中搜索 Configuration 链接指向该 heading slug 的行，校验行列值一致
+4. 提取 `###` 标题文本生成 slug，与表格中 Configuration 链接逐一比对，标记未找到目标的死链
+5. 解析 Benchmark 代码块中 `--random-input-len` 和 `--random-output-len`，与标题 DatasetDesc、元数据 Dataset 做数值级校验
+
+### 修复指引
+
+- **标题与元数据不一致**：以实际配置为准，统一两处的值（通常以标题中的缩写为准，元数据补全详细描述）
+- **表格行缺失或值不匹配**：在对应表中添加或修正该行，确保所有列值与元数据一致
+- **Configuration 链接死链**：修正链接中的 slug 以匹配实际标题
+- **Benchmark 参数与 Dataset 不一致**：修正 `--random-input-len` / `--random-output-len` 以匹配 Dataset 描述符
+
+---
+
+## M-F-11：新增文档须有完整 YAML 前置元数据
+
+**检查范围**：`ascend-npus/` 目录下所有新增的 `.mdx` 文件。
+
+**规则**：新增 `.mdx` 文件开头必须有 YAML 前置元数据（frontmatter），且至少包含以下必填字段：
+
+```yaml
+---
+title: "Page Title"
+metatags:
+  description: "Brief description for SEO and navigation."
+---
+```
+
+**检查项**：
+
+| 检查项 | 要求 |
+|---|---|
+| frontmatter 存在 | 文件必须用 `---` 行开头，且有配对的闭合 `---` 行 |
+| `title` 必填 | frontmatter 中必须包含 `title` 字段，值须用双引号包裹 |
+| `description` 必填 | 必须有 `metatags.description`（优先，与 best_practice / model-tutorials 保持一致）或顶层 `description` |
+| `description` 有意义 | 不能是空字符串，不能是象征性单字（如 `"desc"`、`""`），须简要说明页面内容 |
+
+各子目录的 description 参考格式：
+
+| 目录 | 建议格式 | 示例 |
+|---|---|---|
+| `best_practice/` | `"Best Practice for <ModelName> on Ascend NPU"` | `"Best Practice for Qwen3-8B on Ascend NPU"` |
+| `model-tutorials/` | `"Deploy <ModelName> model with SGLang on Ascend NPUs, including ..."` | `"Deploy DeepSeek-R1 model with SGLang on Ascend NPUs, including single-node and multi-node PD disaggregation modes."` |
+| 顶层页面（quickstart、FAQ 等） | 简要概括页面核心内容 | `"Quickstart for running SGLang on Ascend NPUs with the official container image, including server launch and test request examples."` |
+
+**检查方式**：
+1. 从 PR diff 中识别文件状态为 `added` 的 `.mdx` 文件
+2. 读取文件前 10 行，确认以 `---` 开头且存在配对闭合的 `---`
+3. 解析 frontmatter 中是否存在 `title`（允许 YAML 多行字符串但禁止缺失）
+4. 检查 `metatags.description` 或顶层 `description` 是否存在且非空
+
+**修复指引**：参考同目录下已有文件的 frontmatter 格式，补全缺失字段。`model-tutorials/` 和 `best_practice/` 下文件可参照同目录内任意文件复制并修改 `title` 和 `description`。
+
+---
+
+## M-F-12：成对标点符号须正确闭合
+
+**检查范围**：所有变更 `.mdx` 文件中，diff 的新增或修改行的正文内容（代码块内内容除外）。
+
+**规则**：以下成对出现的符号在正文中必须正确闭合，漏闭合会导致 Markdown/MDX 渲染异常或用户阅读困惑。
+
+### 检查项
+
+| 类别 | 符号 | 示例（合规 / 不合规） |
+|---|---|---|
+| 粗体 | `**...**` | `**bold text**` ✓ / `**bold text` ✗ |
+| 斜体 | `*...*` | `*italic*` ✓ / `*italic` ✗（注：不消费已被 `**` 匹配的 `*`） |
+| 删除线 | `~~...~~` | `~~strikethrough~~` ✓ / `~~strikethrough` ✗ |
+| 内联代码 | `` `...` `` | `` `code` `` ✓ / `` `code `` ✗ |
+| 代码块 | ```` ``` ```` | 每对三反引号须完整开闭 |
+| 链接 | `[...](...)` | 方括号和圆括号须各自配对；允许嵌套，如 `[text ![img](url)](link)` |
+| 图片 | `![...](...)` | 与链接同理，`!` 后可跟 `[...]` |
+| 双引号 | `"..."` | `"hello"` ✓ / `"hello` ✗（排除 YAML frontmatter 中的语法引号） |
+| 单引号 | `'...'` | `'example'` ✓ / `'example` ✗（排除英文缩写撇号如 `don't`、`it's`） |
+| 中文方括号 | `【...】` | `【注意】` ✓ / `【注意` ✗ |
+
+### 排除范围
+
+| 排除场景 | 原因 |
+|---|---|
+| 代码块（`` ```...``` ``）内内容 | 代码块中符号有语法含义，不适用此规则 |
+| YAML frontmatter（`---...---` 之间） | YAML 语法的引号由 M-F-11 单独检查 |
+| 英文缩写撇号（`don't`、`it's`、`won't` 等） | 单引号在此场景是合法语法，不视为未闭合 |
+| MDX 组件标签（`<Tabs>`、`</Tabs>` 等） | JSX 标签闭合由 M-F-10 或 A-1 相关逻辑覆盖 |
+
+### 检查方式
+
+1. 从 PR diff 中提取每个变更文件的**新增行**（`+` 前缀）和**修改行**的正文部分
+2. 排除代码块（`` ```...``` ``）内行和 YAML frontmatter 行
+3. 对同一段落/逻辑块（以空行为界）统计各符号的累计开闭次数：
+   - `**` 计数：开闭须成对（偶数次总出现）
+   - `*` 计数：排除已被 `**` 消费的 `*` 后，`*` 也须成对
+   - `~~` 计数：开闭须成对
+   - `` ` `` 计数：单反引号出现总次数须为偶数（每两个一组形成内联代码），排除三反引号已消费的
+   - `【` / `】` 计数：开闭次数须相等
+   - `"` 计数：双引号在正文中出现总次数须为偶数
+   - `'` 计数：单引号在正文中出现总次数须为偶数（排除已知缩写后）
+4. 符号计数不等的段落标记为 🟡 ISSUE
+5. 允许跨行配对（如 `**` 跨两行），但跨段落配对（中间有空行）标记为 ISSUE
+6. 对于 `[]()` 链接，检查每对 `[` 后是否有配对的 `]` 和 `(`...`)`
+
+### 修复指引
+
+- **漏闭合**：在对应位置补上闭合符号（如 `**text` → `**text**`）
+- **多闭合**：删除多余的符号或确认是否为内容的一部分（后者需转义 `\*`）
+- **跨段落配对**：将段落合并或分别在每个段落内独立闭合

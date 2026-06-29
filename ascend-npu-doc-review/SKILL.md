@@ -66,11 +66,14 @@ WebFetch: https://api.github.com/repos/sgl-project/sglang/pulls/<N>/files
 | 触发条件 | 适用规则 |
 |----------|----------|
 | 变更文件中含脚本代码块（```bash / ```shell / ```python） | M-C-1, M-F-1, M-F-3, M-F-4, M-F-8 |
+| 变更文件在 `best_practice/` 或 `model-tutorials/` 下且含脚本 | M-F-9, A-4 |
+| 变更文件在 `best_practice/` 下 | M-F-10 |
+| 变更文件中含 `sglang.launch_server` / `sglang serve` 命令 | A-3 |
 | 变更文件中含动态字段占位符（正文或代码块均算） | M-F-2 |
 | 变更文件中含链接 | M-F-5 |
 | 删除 .mdx 文件 | M-F-6 |
-| 新增 .mdx 文件 | M-F-7 |
-| 全部 .mdx 变更 | A-1, A-2 |
+| 新增 .mdx 文件 | M-F-7, M-F-11 |
+| 全部 .mdx 变更 | A-1, A-2, A-5, M-F-12 |
 
 > **推荐检查顺序**：先跑正确性规则（M-C，可能直接阻断），再跑重要格式规则（M-F），最后跑建议规则（A）。
 
@@ -92,8 +95,8 @@ WebFetch: https://api.github.com/repos/sgl-project/sglang/pulls/<N>/files
 
 | 优先级 | 规则文件 | 说明 | 严重级别 |
 |--------|----------|------|----------|
-| **重要** | [references/rules-mandatory.md](references/rules-mandatory.md) | 9 条，必须全部通过才可合入 | M-C-1 正确性 → 🔴 BLOCK；M-F-1~M-F-8 重要格式 → 🟡 ISSUE |
-| **建议** | [references/rules-advisory.md](references/rules-advisory.md) | 2 条（A-1 ~ A-2），尽量满足 | 💡 SUGGESTION |
+| **重要** | [references/rules-mandatory.md](references/rules-mandatory.md) | 13 条，必须全部通过才可合入 | M-C-1 正确性 → 🔴 BLOCK；M-F-1~M-F-12 重要格式 → 🟡 ISSUE |
+| **建议** | [references/rules-advisory.md](references/rules-advisory.md) | 5 条（A-1 ~ A-5），尽量满足 | 💡 SUGGESTION |
 
 > **严重级别映射**（输出报告统一使用此三档）：
 > - 🔴 **BLOCK** — 正确性规则（M-C-x）。用户按文档操作会直接报错，必须修复。
@@ -161,6 +164,100 @@ WebFetch: https://api.github.com/repos/sgl-project/sglang/pulls/<N>/files
 - APPROVE：无 🔴 BLOCK 且无 🟡 ISSUE（仅余 💡 SUGGESTION 或全部通过）
 - REQUEST CHANGES：无 🔴 BLOCK，但存在一个或多个 🟡 ISSUE（M-F 重要格式问题）
 - BLOCKED：存在 🔴 BLOCK（M-C 正确性问题，用户照做会直接报错）
+
+## 并行执行策略
+
+当 PR 涉及多个变更文件时，使用 subagent 并行化审查以缩短耗时。
+
+### 任务拆分
+
+审查规则按依赖关系分为两类：
+
+| 类别 | 规则 | 特点 | 并行方式 |
+|---|---|---|---|
+| **逐文件规则** | M-C-1, M-F-1~M-F-4, M-F-8~M-F-10, A-1~A-4 | 仅需单个文件内容即可判断，文件间无依赖 | 每文件一个 subagent，全部并行派发 |
+| **跨文件规则** | M-F-5, M-F-6, M-F-7 | 需跨文件 Glob/Grep 或对比 docs.json | 各一个 subagent，与逐文件 subagent 并行派发 |
+
+### 执行步骤
+
+#### 1. 准备阶段（主控，串行）
+
+- 获取 PR diff 和文件列表（Step 0-2）
+- 按 [规则适用性自动判断](#3-逐规则检查) 表确定每个变更文件触发哪些规则
+- 准备好每个 subagent 的输入（文件路径 + 触发规则列表 + diff 内容）
+
+#### 2. 并行执行（一次性派发所有 subagent）
+
+并行启动以下 subagent，互不依赖，同时运行：
+
+| subagent 名称 | 类型 | 输入 | 负责规则 |
+|---|---|---|---|
+| `per-file-<file-slug>` | 每文件 × N | 单个 `.mdx` 文件路径 + diff + 适用规则列表 | 该文件触发的所有逐文件规则 |
+| `cross-links` | 跨文件 × 1 | 全部变更文件列表 + ascend-npus 目录路径 | M-F-5 |
+| `cross-docs-json` | 跨文件 × 1 | docs.json diff + 所有 .mdx 变更清单 | M-F-6, M-F-7 |
+
+**per-file subagent 提示词模板**：
+
+```
+You are reviewing a single file in an Ascend NPU docs PR for sgl-project/sglang.
+Apply ONLY the rules listed below to the provided file diff. Report violations.
+
+Rules to apply: <RULE_ID_LIST>
+
+--- Rule Summaries ---
+(Each rule's key check and severity, extracted from rules-mandatory.md / rules-advisory.md)
+
+--- File Info ---
+Path: <FILE_PATH>
+Status: added|modified|deleted
+
+--- PR Diff (this file only) ---
+<FILE_DIFF_CONTENT>
+
+For each violation, output exactly:
+- Rule: <ID>
+- Severity: 🔴 BLOCK / 🟡 ISSUE / 💡 SUGGESTION
+- Location: line <N> or lines <N>-<M>
+- Issue: <one-line description>
+- Fix: <actionable suggestion>
+```
+
+**cross-links subagent 提示词模板**：
+
+```
+Verify all links in the changed files under docs_new/docs/hardware-platforms/ascend-npus/.
+Classify each link as: internal root-relative (/docs/...), internal relative, same-file anchor, external, old docs.sglang.io.
+Tasks:
+1. For internal links: verify the target file/anchor exists by glob/grep in ascend-npus/ directory
+2. Flag old docs.sglang.io links: suggest rewriting to root-relative /docs/...
+3. Check same-file anchors resolve to matching heading/id
+Report violations with file path, line number, link text, link URL, and suggested fix.
+```
+
+**cross-docs-json subagent 提示词模板**：
+
+```
+Check docs.json synchronization in this PR.
+Tasks:
+1. For each DELETED .mdx under ascend-npus/: verify the corresponding navigation entry and redirects entry are removed from docs.json
+2. For each ADDED .mdx under ascend-npus/: verify a pages entry exists in the correct group (group: "Ascend NPUs", sub-groups: "Model Tutorials" / "Best Practice")
+3. For modified files: no docs.json check needed
+Report violations with file path, missing/extra entry details, and suggested fix.
+```
+
+#### 3. 结果汇总（主控，串行）
+
+- 等待所有 subagent 返回
+- 按文件分组合并问题列表
+- 按严重级别排序（🔴 BLOCK → 🟡 ISSUE → 💡 SUGGESTION）
+- 按 [阶段三](#阶段三输出审查意见) 格式输出最终报告和整体判定
+
+### 调度原则
+
+- **无依赖即并行**：逐文件规则和跨文件规则之间无依赖，全部同时派发
+- **M-F-10 不拆分**：用例一致性检查涉及单个文件内的多段比对（标题、元数据、表格、bench 命令），由一个 per-file subagent 整体完成，不二次拆分
+- **docs.json 变更即触发**：即使只有 docs.json 变更而无 .mdx 变更，也要派发 cross-docs-json subagent 检查 M-F-6 / M-F-7
+- **单文件 PR 同样适用**：即使只有 1 个变更文件，仍用并行框架（1 个 per-file + cross-links + cross-docs-json），流程统一
 
 ## 核心原则
 
