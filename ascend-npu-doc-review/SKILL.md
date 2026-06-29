@@ -25,6 +25,8 @@ description: 检视 SGLang Ascend NPU 文档 PR 的规范性。涵盖脚本占�
 
 ### 1. 获取 PR 变更数据
 
+采用**两层降级策略**，按优先级依次尝试，成功后立即停止后续尝试：
+
 **方式一（优先）：`gh` CLI**
 
 ```bash
@@ -48,6 +50,47 @@ WebFetch: https://api.github.com/repos/sgl-project/sglang/pulls/<N>/files
 - `.diff` 端点返回完整 unified diff
 - `/files` API 返回结构化 JSON（字段：`filename`、`status`、`additions`、`deletions`），无需认证即可调用，频率限制为 60 req/h（对 PR 审查完全够用）
 - 从 diff 的 `diff --git a/<path> b/<path>` 行也可解析变更文件列表和状态（new file = added，deleted file = removed，index = modified）
+
+### 1.1 失败兜底退出
+
+**两种方式都失败时，必须退出审查，不得凭猜测继续。**
+
+失败判定标准：
+
+| 判定 | gh CLI | WebFetch |
+|---|---|---|
+| PR 不存在 / 404 | `gh pr view` 返回非 0 退出码或 "not found" | WebFetch 返回 404 或空内容 |
+| 网络不可达 | 命令超时或连接拒绝 | WebFetch 超时或返回网络错误 |
+| 权限不足 | `gh auth status` 未登录或无 repo 权限 | `/files` API 返回 403 |
+| 响应为空 | JSON 输出中 `files` 数组为空或 diff 为空 | 两端点均返回空内容 |
+| 格式异常 | JSON 解析失败且重试后仍失败 | 返回非 diff 格式 / 非 JSON 格式内容 |
+
+**退出行为**：
+
+1. 向用户输出清晰的失败原因，包含：
+   - 尝试了哪些方式
+   - 每种方式的具体错误
+   - 建议的排查方向
+2. 输出示例：
+
+```
+> 无法获取 PR #<N> 的变更数据，审查终止。
+
+尝试记录：
+  - gh CLI: gh pr view <N> 返回 "pull request not found"（exit code 1）
+  - WebFetch: https://github.com/sgl-project/sglang/pull/<N>.diff 返回 404
+
+建议排查：
+  1. 确认 PR 号 <N> 是否正确
+  2. 确认仓库 sgl-project/sglang 是否存在
+  3. 如果 PR 来自 fork 且已删除，尝试通过 commit SHA 定位
+```
+
+3. **绝对禁止**以下行为：
+   - 根据 PR 标题或描述猜测变更内容
+   - 假设 "这个 PR 应该改了某文件" 然后凭空审查
+   - 用空白/占位数据替代真实的 PR diff
+   - 输出任何形式的"虚拟审查报告"
 
 ### 2. 过滤变更范围
 
