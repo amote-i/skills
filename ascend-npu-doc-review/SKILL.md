@@ -1,6 +1,6 @@
 ---
 name: ascend-npu-doc-review
-description: 检视 SGLang Ascend NPU 文档 PR 的规范性。涵盖脚本占位符、动态字段、硬编码 IP/路径、链接有效性、docs.json 同步、环境变量格式等检查。当用户提供 sgl-project/sglang 仓库中涉及 /docs_new/docs/hardware-platforms/ascend-npus/ 路径的 PR 号或 PR 链接要求审查时触发。
+description: [SLASH-COMMAND ONLY] 检视 Ascend NPU 文档 PR 的规范性。仅当用户明确以 `/ascend-npu-doc-review` 斜杠命令形式调用时触发，日常对话中关于 PR、链接、脚本规范等关键词不会触发此 skill。
 ---
 
 # Ascend NPU 文档 PR 检视
@@ -9,13 +9,14 @@ description: 检视 SGLang Ascend NPU 文档 PR 的规范性。涵盖脚本占�
 
 ## Usage
 
-当用户提供 PR 号或 PR URL 并要求审查 Ascend NPU 文档时触发（基于本 skill 的 description 自动匹配，无需注册斜杠命令）。常见触发表述：
+仅通过斜杠命令触发：
 
 ```
 /ascend-npu-doc-review <PR 号>
 /ascend-npu-doc-review <PR URL>
-审查这个 Ascend NPU 文档 PR：<PR 号 / PR URL>
 ```
+
+非斜杠命令的日常对话中不会触发本 skill。
 
 ## Steps
 
