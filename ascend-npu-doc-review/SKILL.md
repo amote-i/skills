@@ -1,6 +1,6 @@
 ---
 name: ascend-npu-doc-review
-description: [SLASH-COMMAND ONLY] 检视 Ascend NPU 文档 PR 的规范性。仅当用户明确以 `/ascend-npu-doc-review` 斜杠命令形式调用时触发，日常对话中关于 PR、链接、脚本规范等关键词不会触发此 skill。
+description: 检视 Ascend NPU 文档 PR 的规范性。仅当用户明确以 `/ascend-npu-doc-review` 斜杠命令形式调用时触发，日常对话中关于 PR、链接、脚本规范等关键词不会触发此 skill。
 ---
 
 # Ascend NPU 文档 PR 检视
@@ -117,6 +117,7 @@ WebFetch: https://api.github.com/repos/sgl-project/sglang/pulls/<N>/files
 | 变更文件中含链接 | M-F-5 |
 | 删除 .mdx 文件 | M-F-6 |
 | 新增 .mdx 文件 | M-F-7, M-F-11 |
+| 变更文件中含单位（正文/注释中数值+单位组合） | M-F-13 |
 | 全部 .mdx 变更 | A-1, A-2, A-5, M-F-12 |
 
 > **推荐检查顺序**：先跑正确性规则（M-C，可能直接阻断），再跑重要格式规则（M-F），最后跑建议规则（A）。
@@ -139,7 +140,7 @@ WebFetch: https://api.github.com/repos/sgl-project/sglang/pulls/<N>/files
 
 | 优先级 | 规则文件 | 说明 | 严重级别 |
 |--------|----------|------|----------|
-| **重要** | [references/rules-mandatory.md](references/rules-mandatory.md) | 13 条，必须全部通过才可合入 | M-C-1 正确性 → 🔴 BLOCK；M-F-1~M-F-12 重要格式 → 🟡 ISSUE |
+| **重要** | [references/rules-mandatory.md](references/rules-mandatory.md) | 14 条，必须全部通过才可合入 | M-C-1 正确性 → 🔴 BLOCK；M-F-1~M-F-13 重要格式 → 🟡 ISSUE |
 | **建议** | [references/rules-advisory.md](references/rules-advisory.md) | 5 条（A-1 ~ A-5），尽量满足 | 💡 SUGGESTION |
 
 > **严重级别映射**（输出报告统一使用此三档）：
